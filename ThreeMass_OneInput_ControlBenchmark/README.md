@@ -103,3 +103,39 @@ Results include both modes, sensor scale, online seed, noise and measurements.
 Tracking RMSE still uses the true simulated state. Each run overwrites its
 usual result file, so copy results before running another mode if needed.
 MPC only exposes measurementMode because it has no offline training data.
+
+3D result playback and GIF export
+--------------------------------
+After running a controller simulation, run its separate animation script:
+
+    MPC/animate_mpc.m
+    DeePC/animate_deepc.m
+    HDeePC/animate_hdeepc.m
+    SD-MPC/animate_sdmpc.m
+    PZ-DeePC/animate_pzdeepc_2pole.m
+    PZ-DeePC/animate_pzdeepc_4pole.m
+
+All use common/animate_three_mass.m and only read saved results. The scene
+shows cubic masses, wall and inter-mass springs/dampers, and the applied
+force on mass 1. The purple spring is the nonlinear mass-2/mass-3 coupling.
+Right-hand plots show true q3 tracking, held input, and q3-q2 deformation.
+The physical layout spacing is illustrative; actual displacements remain in
+metres, with dashed footprints marking the zero-displacement positions.
+
+Each script exposes FPS and PlaybackSpeed (default 60 FPS, 2x speed). GIF and
+final-frame PNG files go to results/animations. Set both output paths to ''
+for playback only. No controller is solved during animation. The shared
+function also accepts a result struct and options.Visible = 'off' for export
+without displaying the figure, and options.MaxFrames for a quick preview.
+Full export may take longer than the resulting GIF's playback duration.
+
+Smooth playback modes
+---------------------
+Animation scripts now default to playbackMode = 'preview' at 60 FPS. Preview
+performs no GIF encoding or image capture per frame and follows elapsed time;
+it skips overdue frames if graphics rendering cannot meet the requested FPS.
+Set playbackMode = 'mp4' to render a video with the requested frame rate, then
+watch the finished MP4 for smooth playback independent of rendering speed.
+Set playbackMode = 'gif' for GitHub GIF export (capped at 50 FPS because GIF
+uses centisecond delays). PlaybackSpeed controls time acceleration separately
+from FPS. Export can take longer than the finished video's running time.

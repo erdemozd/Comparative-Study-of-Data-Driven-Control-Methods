@@ -10,7 +10,7 @@ s.Tend = 30.0;
 s.Q = diag([10, 8, 10, 12, 180, 25]);
 s.R = 0.10;
 
-s.lambdaG = 0.5;
+s.lambdaG = 1e-2;
 s.lambdaSigma = 1e5;
 
 s.uMax = p.uMax;

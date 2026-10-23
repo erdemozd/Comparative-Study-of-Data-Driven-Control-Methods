@@ -2,8 +2,8 @@ clear; clc; close all;
 
 % Output sensor noise: offline predictor data and online feedback are independent.
 % Applied training inputs are retained in both offline modes.
-offlineDataMode = 'noisy';  % 'clean' or 'noisy'
-measurementMode = 'noisy';  % 'clean' or 'noisy'
+offlineDataMode = 'clean';  % 'clean' or 'noisy'
+measurementMode = 'clean';  % 'clean' or 'noisy'
 measurementNoiseSeed = 42;
 
 p = three_mass_params(); s = benchmark_settings(p);

@@ -2,7 +2,7 @@ clear; clc; close all;
 
 % Select 'clean' or 'noisy'. Noisy mode uses the DeePC training-data
 % per-channel sensor standard deviations (without a state estimator).
-measurementMode = 'noisy';
+measurementMode = 'clean';
 measurementNoiseSeed = 42;
 
 p = three_mass_params();
