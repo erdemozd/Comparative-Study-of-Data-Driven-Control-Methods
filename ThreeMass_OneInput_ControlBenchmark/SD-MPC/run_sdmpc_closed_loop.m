@@ -1,10 +1,37 @@
 clear; clc; close all;
 
+% Output sensor noise: offline predictor data and online feedback are independent.
+% Applied training inputs are retained in both offline modes.
+offlineDataMode = 'noisy';  % 'clean' or 'noisy'
+measurementMode = 'noisy';  % 'clean' or 'noisy'
+measurementNoiseSeed = 42;
+
 p = three_mass_params(); s = benchmark_settings(p);
 projectRoot = fileparts(fileparts(mfilename('fullpath'))); if isempty(projectRoot), projectRoot=pwd; end
 resultsFolder=fullfile(projectRoot,'results'); if ~exist(resultsFolder,'dir'), mkdir(resultsFolder); end
 dataFile=fullfile(projectRoot,'data','sdmpc_residual_data.mat'); if ~exist(dataFile,'file'), error('Run SD-MPC/generate_sdmpc_data.m first.'); end
-load(dataFile,'sdmpcData'); ctrl=sdmpc_setup(p,sdmpcData);
+load(dataFile,'sdmpcData');
+% Reconstruct clean outputs for legacy residual datasets and align sensor scale.
+D = load(fullfile(projectRoot,'data','deepc_training_data.mat'),'deepcData');
+deepcData = D.deepcData;
+xClean = zeros(6,size(sdmpcData.u,2));
+for j = 1:size(xClean,2)-1
+    xClean(:,j+1) = rk4_step(xClean(:,j),sdmpcData.u(j),p.Ts,p);
+end
+switch lower(offlineDataMode)
+    case 'clean'
+        sdmpcData.xTrue = xClean;
+    case 'noisy'
+        offlineNoiseStream = RandStream('mt19937ar','Seed',1);
+        sdmpcData.xTrue = xClean + deepcData.sigmaY(:) .* ...
+            randn(offlineNoiseStream,6,size(xClean,2));
+    otherwise
+        error('offlineDataMode must be clean or noisy.');
+end
+sdmpcData.xClean = xClean;
+sdmpcData.sigmaY = deepcData.sigmaY(:);
+sdmpcData.xResidual = sdmpcData.xTrue-sdmpcData.xNom;
+ctrl=sdmpc_setup(p,sdmpcData);
 
 t=(0:p.Ts:s.Tend)'; Ns=numel(t); r=build_reference(t);
 x=zeros(6,Ns); xM=zeros(6,Ns); u=zeros(Ns,1);
@@ -12,7 +39,24 @@ uBuffer=zeros(1,ctrl.Tini); resBuffer=zeros(6,ctrl.Tini);
 solveTime=nan(Ns-1,1); Jlog=nan(Ns-1,1); sigmaNorm=nan(Ns-1,1); gNorm=nan(Ns-1,1); uSteady=nan(Ns-1,1); fail=false(Ns-1,1);
 predNext=nan(6,Ns-1); oneStepErr=nan(6,Ns-1); nomPredNext=nan(6,Ns-1); resPredNext=nan(6,Ns-1); corrPredNext=nan(6,Ns-1);
 
+% Fixed sensor scale shared with MPC; offline mode does not change this scale.
+sigmaY = deepcData.sigmaY(:);
+validateattributes(sigmaY,{'numeric'}, ...
+    {'real','finite','nonnegative','numel',6},mfilename,'sigmaY');
+switch lower(measurementMode)
+    case 'clean'
+        measurementNoise = zeros(6,Ns);
+    case 'noisy'
+        noiseStream = RandStream('mt19937ar','Seed',measurementNoiseSeed);
+        measurementNoise = sigmaY .* randn(noiseStream,6,Ns);
+    otherwise
+        error('measurementMode must be clean or noisy.');
+end
+yMeasured = zeros(6,Ns);
+fprintf('Offline data: %s | Online measurements: %s\n',offlineDataMode,measurementMode);
+
 for k=1:Ns-1
+    yMeasured(:,k) = x(:,k) + measurementNoise(:,k);
     rPreview=repmat(r(k),ctrl.N,1); rDotPreview=zeros(ctrl.N,1);
     [uc,info]=sdmpc_control(uBuffer(:),resBuffer(:),xM(:,k),rPreview,rDotPreview,p,ctrl);
     if info.success
@@ -32,13 +76,14 @@ for k=1:Ns-1
         fail(k)=true; uk=0; if k>1, uk=u(k-1); end
     end
     uk=min(max(uk,-ctrl.uMax),ctrl.uMax); u(k)=uk; solveTime(k)=info.solveTime;
-    currentResidual=x(:,k)-xM(:,k);
+    currentResidual=yMeasured(:,k)-xM(:,k);
     uBuffer=[uBuffer(:,2:end),uk]; resBuffer=[resBuffer(:,2:end),currentResidual];
     x(:,k+1)=rk4_step(x(:,k),uk,p.Ts,p);
     xM(:,k+1)=ctrl.Ad*xM(:,k)+ctrl.Bd*uk;
     if all(isfinite(predNext(:,k))), oneStepErr(:,k)=x(:,k+1)-predNext(:,k); end
 end
 u(end)=u(end-1);
+yMeasured(:,end) = x(:,end) + measurementNoise(:,end);
 %%
 residual=x-xM; residualNorm=vecnorm(residual,2,1)'; q3=x(5,:)'; rmse=sqrt(mean((q3-r).^2));
 dq23=x(5,:)'-x(3,:)'; Flinear23=p.k23*dq23; Fcubic23=p.k3*dq23.^3; nonlinearRatio=100*abs(Fcubic23)./(abs(Flinear23)+1e-12);
@@ -75,4 +120,7 @@ result=struct(); result.t=t; result.x=x; result.xM=xM; result.residual=residual;
 result.solveTime=solveTime; result.J=Jlog; result.sigmaNorm=sigmaNorm; result.gNorm=gNorm; result.uSteady=uSteady; result.fail=fail;
 result.predNext=predNext; result.oneStepErr=oneStepErr; result.nomPredNext=nomPredNext; result.resPredNext=resPredNext; result.corrPredNext=corrPredNext;
 result.dq23=dq23; result.Flinear23=Flinear23; result.Fcubic23=Fcubic23; result.nonlinearRatio=nonlinearRatio; result.ctrl=ctrl; result.p=p;
+result.offlineDataMode=offlineDataMode; result.measurementMode=measurementMode;
+result.measurementNoiseSeed=measurementNoiseSeed; result.sigmaY=sigmaY;
+result.measurementNoise=measurementNoise; result.yMeasured=yMeasured;
 save(fullfile(resultsFolder,'sdmpc_three_mass_diagnostics.mat'),'result');

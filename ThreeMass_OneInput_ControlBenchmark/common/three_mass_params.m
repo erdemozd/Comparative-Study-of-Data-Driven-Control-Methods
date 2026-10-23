@@ -14,7 +14,7 @@ p.m3 = 1.2;      % kg
 p.k1  = 20.0;    % N/m, wall spring
 p.k12 = 15.0;    % N/m, m1-m2 linear spring
 p.k23 = 12.0;    % N/m, m2-m3 linear spring
-p.k3  = 120.0;    % N/m^3, cubic stiffness between m2-m3
+p.k3  = 150.0;    % N/m^3, cubic stiffness between m2-m3
 
 p.c1  = 1.0;     % N s/m
 p.c12 = 0.8;     % N s/m

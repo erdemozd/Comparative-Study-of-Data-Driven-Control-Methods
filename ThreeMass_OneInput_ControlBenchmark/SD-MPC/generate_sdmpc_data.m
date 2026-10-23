@@ -34,7 +34,7 @@ for k = 1:Tdata-1
 end
 %% output noise
 signalRMS = sqrt(mean(xTrue.^2,2));
-noiseLevel = 0.01;
+noiseLevel = 0.02;
 sigmaX = noiseLevel * signalRMS;
 noiseX = sigmaX .* randn(size(xTrue));
 

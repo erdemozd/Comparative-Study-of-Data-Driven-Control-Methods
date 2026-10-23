@@ -69,3 +69,37 @@ The HDeePC and pole-informed papers derive their strongest equivalence results
 for linear systems. Here the true plant is nonlinear. The benchmark therefore
 uses those methods as structured/prior-informed predictive controllers on a
 nonlinear plant, with the prior derived from the nominal/local linear model.
+
+Noise experiment switches
+-------------------------
+The DeePC, HDeePC, SD-MPC and both PZ-DeePC closed-loop run scripts expose:
+
+    offlineDataMode = 'noisy';  % 'clean' or 'noisy'
+    measurementMode = 'noisy';  % 'clean' or 'noisy'
+    measurementNoiseSeed = 42;
+
+These are independent switches; all four combinations are supported. Both
+modes default to noisy. The offline switch selects output data before Hankel
+construction. Applied training inputs remain unchanged. The online switch
+adds sensor noise before measurements enter the existing history buffers;
+HDeePC also uses measured q1,v1 for its known-state initialization. SD-MPC
+forms its online residual from measured output minus nominal model state.
+Existing buffer timing and zero initial histories are retained.
+
+Online noise uses deepcData.sigmaY in every controller, matching MPC's noisy
+mode. Seed 42 gives the same sensor-noise sequence across controllers for a
+shared simulation length. Offline and online draws are independent; changing
+the offline mode does not change the online noise scale or sequence.
+
+DeePC/HDeePC/PZ-DeePC select recorded y or yClean from the existing training
+file. For legacy SD-MPC datasets, the runner reconstructs clean outputs from
+the saved applied inputs and current plant parameters, starting at zero, then
+rebuilds residuals in memory. Its noisy offline mode uses deepcData.sigmaY and
+seed 1, replacing the older 1-percent noise convention for this experiment.
+Use training datasets generated with the current plant parameters. Existing
+data files are not overwritten by these selections.
+
+Results include both modes, sensor scale, online seed, noise and measurements.
+Tracking RMSE still uses the true simulated state. Each run overwrites its
+usual result file, so copy results before running another mode if needed.
+MPC only exposes measurementMode because it has no offline training data.

@@ -1,17 +1,52 @@
 clear; clc; close all;
 
+% Output sensor noise: offline predictor data and online feedback are independent.
+% Applied training inputs are retained in both offline modes.
+offlineDataMode = 'noisy';  % 'clean' or 'noisy'
+measurementMode = 'noisy';  % 'clean' or 'noisy'
+measurementNoiseSeed = 42;
+
 p=three_mass_params(); s=benchmark_settings(p);
 projectRoot=fileparts(fileparts(mfilename('fullpath'))); if isempty(projectRoot), projectRoot=pwd; end
 resultsFolder=fullfile(projectRoot,'results'); if ~exist(resultsFolder,'dir'), mkdir(resultsFolder); end
 dataFile=fullfile(projectRoot,'data','deepc_training_data.mat'); if ~exist(dataFile,'file'), error('Run DeePC/generate_deepc_data.m first.'); end
 load(dataFile,'deepcData');
+switch lower(offlineDataMode)
+    case 'clean'
+        if ~isfield(deepcData,'yClean')
+            error('Regenerate DeePC training data to obtain yClean.');
+        end
+        deepcData.y = deepcData.yClean;
+    case 'noisy'
+        % Use the recorded noisy offline outputs.
+    otherwise
+        error('offlineDataMode must be clean or noisy.');
+end
+
 ctrl=pzdeepc_setup_4pole(p,deepcData);
 
 t=(0:p.Ts:s.Tend)'; Ns=numel(t); r=build_reference(t); x=zeros(6,Ns); u=zeros(Ns,1);
 uBuffer=zeros(1,ctrl.Tini); yBuffer=zeros(6,ctrl.Tini);
 solveTime=nan(Ns-1,1); Jlog=nan(Ns-1,1); sigmaNorm=nan(Ns-1,1); gNorm=nan(Ns-1,1); uSteady=nan(Ns-1,1); fail=false(Ns-1,1); predNext=nan(6,Ns-1); oneStepErr=nan(6,Ns-1);
 
+% Fixed sensor scale shared with MPC; offline mode does not change this scale.
+sigmaY = deepcData.sigmaY(:);
+validateattributes(sigmaY,{'numeric'}, ...
+    {'real','finite','nonnegative','numel',6},mfilename,'sigmaY');
+switch lower(measurementMode)
+    case 'clean'
+        measurementNoise = zeros(6,Ns);
+    case 'noisy'
+        noiseStream = RandStream('mt19937ar','Seed',measurementNoiseSeed);
+        measurementNoise = sigmaY .* randn(noiseStream,6,Ns);
+    otherwise
+        error('measurementMode must be clean or noisy.');
+end
+yMeasured = zeros(6,Ns);
+fprintf('Offline data: %s | Online measurements: %s\n',offlineDataMode,measurementMode);
+
 for k=1:Ns-1
+    yMeasured(:,k) = x(:,k) + measurementNoise(:,k);
     rPreview=repmat(r(k),ctrl.N,1); rDotPreview=zeros(ctrl.N,1);
     [uc,info]=pzdeepc_control(uBuffer(:),yBuffer(:),rPreview,rDotPreview,p,ctrl);
     if info.success
@@ -23,11 +58,12 @@ for k=1:Ns-1
         fail(k)=true; uk=0; if k>1, uk=u(k-1); end
     end
     uk=min(max(uk,-ctrl.uMax),ctrl.uMax); u(k)=uk; solveTime(k)=info.solveTime;
-    uBuffer=[uBuffer(:,2:end),uk]; yBuffer=[yBuffer(:,2:end),x(:,k)];
+    uBuffer=[uBuffer(:,2:end),uk]; yBuffer=[yBuffer(:,2:end),yMeasured(:,k)];
     x(:,k+1)=rk4_step(x(:,k),uk,p.Ts,p);
     if all(isfinite(predNext(:,k))), oneStepErr(:,k)=x(:,k+1)-predNext(:,k); end
 end
 u(end)=u(end-1);
+yMeasured(:,end) = x(:,end) + measurementNoise(:,end);
 
 q3=x(5,:)'; rmse=sqrt(mean((q3-r).^2));
 dq23=x(5,:)'-x(3,:)'; Flinear23=p.k23*dq23; Fcubic23=p.k3*dq23.^3; nonlinearRatio=100*abs(Fcubic23)./(abs(Flinear23)+1e-12);
@@ -69,4 +105,7 @@ nexttile; plot(t(1:end-1),Jlog); grid on; xlabel('Time [s]'); ylabel('J^*'); tit
 nexttile; stairs(t(1:end-1),double(fail)); ylim([-0.1 1.1]); grid on; xlabel('Time [s]'); ylabel('Failure'); title('Solver failures'); title(tl,'4-Pole PZ-DeePC Optimization');
 
 result=struct(); result.t=t; result.x=x; result.u=u; result.r=r; result.rmse=rmse; result.solveTime=solveTime; result.J=Jlog; result.sigmaNorm=sigmaNorm; result.gNorm=gNorm; result.uSteady=uSteady; result.fail=fail; result.predNext=predNext; result.oneStepErr=oneStepErr; result.filteredTime=tPrime; result.filteredState=yPrime; result.filterFrequency=w; result.filterResponse=Hfilter; result.dq23=dq23; result.Flinear23=Flinear23; result.Fcubic23=Fcubic23; result.nonlinearRatio=nonlinearRatio; result.ctrl=ctrl; result.p=p;
+result.offlineDataMode=offlineDataMode; result.measurementMode=measurementMode;
+result.measurementNoiseSeed=measurementNoiseSeed; result.sigmaY=sigmaY;
+result.measurementNoise=measurementNoise; result.yMeasured=yMeasured;
 save(fullfile(resultsFolder,'pzdeepc_4pole_three_mass_diagnostics.mat'),'result');

@@ -1,5 +1,11 @@
 clear; clc; close all;
 
+% Output sensor noise: offline predictor data and online feedback are independent.
+% Applied training inputs are retained in both offline modes.
+offlineDataMode = 'noisy';  % 'clean' or 'noisy'
+measurementMode = 'noisy';  % 'clean' or 'noisy'
+measurementNoiseSeed = 42;
+
 p = three_mass_params();
 s = benchmark_settings(p);
 
@@ -22,6 +28,18 @@ if ~exist(dataFile,'file')
 end
 
 load(dataFile,'deepcData');
+switch lower(offlineDataMode)
+    case 'clean'
+        if ~isfield(deepcData,'yClean')
+            error('Regenerate DeePC training data to obtain yClean.');
+        end
+        deepcData.y = deepcData.yClean;
+    case 'noisy'
+        % Use the recorded noisy offline outputs.
+    otherwise
+        error('offlineDataMode must be clean or noisy.');
+end
+
 
 ctrl = deepc_setup(p,deepcData);
 
@@ -48,7 +66,24 @@ predNext = nan(6,Ns-1);
 currentStateErr = nan(6,Ns-1);
 oneStepErr = nan(6,Ns-1);
 
+% Fixed sensor scale shared with MPC; offline mode does not change this scale.
+sigmaY = deepcData.sigmaY(:);
+validateattributes(sigmaY,{'numeric'}, ...
+    {'real','finite','nonnegative','numel',6},mfilename,'sigmaY');
+switch lower(measurementMode)
+    case 'clean'
+        measurementNoise = zeros(6,Ns);
+    case 'noisy'
+        noiseStream = RandStream('mt19937ar','Seed',measurementNoiseSeed);
+        measurementNoise = sigmaY .* randn(noiseStream,6,Ns);
+    otherwise
+        error('measurementMode must be clean or noisy.');
+end
+yMeasured = zeros(6,Ns);
+fprintf('Offline data: %s | Online measurements: %s\n',offlineDataMode,measurementMode);
+
 for k = 1:Ns-1
+    yMeasured(:,k) = x(:,k) + measurementNoise(:,k);
     rPreview = repmat(r(k),ctrl.N,1);
     rDotPreview = zeros(ctrl.N,1);
 
@@ -95,7 +130,7 @@ for k = 1:Ns-1
     end
 
     uBuffer = [uBuffer(:,2:end),uk];
-    yBuffer = [yBuffer(:,2:end),x(:,k)];
+    yBuffer = [yBuffer(:,2:end),yMeasured(:,k)];
 
     x(:,k+1) = rk4_step(x(:,k),uk,p.Ts,p);
 
@@ -105,6 +140,7 @@ for k = 1:Ns-1
 end
 
 u(end) = u(end-1);
+yMeasured(:,end) = x(:,end) + measurementNoise(:,end);
 
 %% Performance
 q3 = x(5,:)';
@@ -316,4 +352,7 @@ result.nonlinearRatio = nonlinearRatio;
 result.ctrl = ctrl;
 result.p = p;
 
+result.offlineDataMode=offlineDataMode; result.measurementMode=measurementMode;
+result.measurementNoiseSeed=measurementNoiseSeed; result.sigmaY=sigmaY;
+result.measurementNoise=measurementNoise; result.yMeasured=yMeasured;
 save(fullfile(resultsFolder,'deepc_three_mass_diagnostics.mat'),'result');
