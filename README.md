@@ -1,228 +1,96 @@
-# Comparative Study of Data-Driven Control Methods
+# Comparative Study of Data-Driven Predictive Control Methods
 
-This repository contains a comparative study of model-based, data-driven, hybrid, and prior-informed predictive control methods applied to a nonlinear three-mass spring-damper system.
+![MATLAB](https://img.shields.io/badge/MATLAB-R2021b%2B-orange)
+![Toolboxes](https://img.shields.io/badge/Toolboxes-Optimization%20%7C%20Control%20System-blue)
+![Status](https://img.shields.io/badge/status-active%20development-yellow)
 
-The main objective is to investigate how different amounts and forms of prior system knowledge affect:
+A MATLAB benchmark comparing **model-based**, **data-driven**, **hybrid** and **prior-informed** predictive controllers on a nonlinear three-mass spring–damper system.
 
-- closed-loop reference tracking,
-- prediction accuracy,
-- robustness to noisy and limited data,
-- optimization complexity,
-- behavioral coefficient magnitude,
-- nonlinear plant excitation,
-- and computational effort.
+The study investigates how the *amount* and *form* of prior system knowledge affect:
 
-The implemented controllers are:
+- closed-loop reference tracking
+- prediction accuracy
+- robustness to noisy and limited data
+- optimization complexity and computational effort
+- magnitude of the behavioral coefficients $g$
+- excitation of the plant nonlinearity
 
-- **Model Predictive Control (MPC)**
-- **Data-Enabled Predictive Control (DeePC)**
-- **Semi-Data-Driven MPC (SD-MPC)**
-- **Hybrid Data-Enabled Predictive Control (HDeePC)**
-- **Pole-Informed DeePC (PZ-DeePC)**
+| Controller | Prior knowledge used | Prediction model |
+|---|---|---|
+| **MPC** | Full nominal linear model | $X = S_x x_0 + S_u U$ |
+| **DeePC** | None (data only) | $X = Y_f g$ |
+| **SD-MPC** | Full nominal model + data-driven residual | $X = S_x x_M + S_u U_f g + R_f g$ |
+| **HDeePC** | Model of the known subsystem ($m_1$) | $X = S_{\mathrm{full}} x_\kappa(0) + G_{\mathrm{full}} g$ |
+| **PZ-DeePC** | Known pole locations (2 or 4 poles) | $X = G_x g + d_{\mathrm{past}}$ |
 
-All controllers are tested on the same nonlinear plant and use the same reference trajectory, physical constraints, prediction horizon, and cost structure as far as their formulations permit.
-
----
-
-# 1. Three-Mass Benchmark System
-
-The benchmark system is a three-mass spring-damper chain
-
-```text
-wall -- (k1,c1) -- m1 -- (k12,c12) -- m2 -- (k23,c23,k3) -- m3
-```
-
-with a single force input applied to the first mass.
-
-The state vector is
-
-```math
-x =
-\begin{bmatrix}
-q_1 &
-v_1 &
-q_2 &
-v_2 &
-q_3 &
-v_3
-\end{bmatrix}^{\top}
-```
-
-and the input is
-
-```math
-u \in \mathbb{R}.
-```
-
-The main controlled output is the third-mass position $q_3$.
-
-The true nonlinear dynamics are
-
-```math
-\dot q_1 = v_1
-```
-
-```math
-m_1\dot v_1 =
-u-k_1q_1-c_1v_1
-+k_{12}(q_2-q_1)
-+c_{12}(v_2-v_1)
-```
-
-```math
-\dot q_2 = v_2
-```
-
-```math
-m_2\dot v_2 =
--k_{12}(q_2-q_1)
--c_{12}(v_2-v_1)
-+k_{23}(q_3-q_2)
-+k_3(q_3-q_2)^3
-+c_{23}(v_3-v_2)
-```
-
-```math
-\dot q_3 = v_3
-```
-
-```math
-m_3\dot v_3 =
--k_{23}(q_3-q_2)
--k_3(q_3-q_2)^3
--c_{23}(v_3-v_2).
-```
-
-The cubic spring term
-
-```math
-F_{\mathrm{cubic}}
-=
-k_3(q_3-q_2)^3
-```
-
-introduces the main nonlinearity.
-
-The corresponding linear spring force is
-
-```math
-F_{\mathrm{linear}}
-=
-k_{23}(q_3-q_2).
-```
-
-A nonlinear-exposure metric is defined as
-
-```math
-\eta_{\mathrm{NL}}
-=
-100
-\frac{|F_{\mathrm{cubic}}|}
-{|F_{\mathrm{linear}}|}.
-```
-
-For $q_3 \neq q_2$,
-
-```math
-\eta_{\mathrm{NL}}
-=
-100
-\frac{k_3}{k_{23}}
-(q_3-q_2)^2.
-```
-
-This metric is used to quantify how strongly a controller drives the true nonlinear plant outside the approximately linear operating region.
+All controllers are tested on the same nonlinear plant, with the same reference trajectory, physical constraints, prediction horizon and cost structure, as far as their formulations permit.
 
 ---
 
-# 2. Nominal Linear Model
+## Table of Contents
 
-The nominal model neglects the cubic stiffness term.
-
-The continuous-time model is
-
-```math
-\dot x = Ax+Bu.
-```
-
-With the state ordering
-
-```math
-x=
-\begin{bmatrix}
-q_1 & v_1 & q_2 & v_2 & q_3 & v_3
-\end{bmatrix}^{\top},
-```
-
-the system matrix is
-
-```math
-A=
-\begin{bmatrix}
-0&1&0&0&0&0\\
--\frac{k_1+k_{12}}{m_1}
-&
--\frac{c_1+c_{12}}{m_1}
-&
-\frac{k_{12}}{m_1}
-&
-\frac{c_{12}}{m_1}
-&
-0&0\\
-0&0&0&1&0&0\\
-\frac{k_{12}}{m_2}
-&
-\frac{c_{12}}{m_2}
-&
--\frac{k_{12}+k_{23}}{m_2}
-&
--\frac{c_{12}+c_{23}}{m_2}
-&
-\frac{k_{23}}{m_2}
-&
-\frac{c_{23}}{m_2}\\
-0&0&0&0&0&1\\
-0&0&
-\frac{k_{23}}{m_3}
-&
-\frac{c_{23}}{m_3}
-&
--\frac{k_{23}}{m_3}
-&
--\frac{c_{23}}{m_3}
-\end{bmatrix},
-```
-
-and
-
-```math
-B=
-\begin{bmatrix}
-0\\
-1/m_1\\
-0\\
-0\\
-0\\
-0
-\end{bmatrix}.
-```
-
-The discrete nominal model is obtained using zero-order hold,
-
-```math
-x_{k+1}=A_dx_k+B_du_k.
-```
-
-This model is used directly in MPC and partially in SD-MPC and HDeePC.
+1. [Quick Start](#quick-start)
+2. [Repository Structure](#repository-structure)
+3. [Three-Mass Benchmark System](#three-mass-benchmark-system)
+4. [Nominal Linear Model](#nominal-linear-model)
+5. [Training Data](#training-data)
+6. [Common Tracking Formulation](#common-tracking-formulation)
+7. [Controllers](#controllers)
+    - [Model Predictive Control](#model-predictive-control-mpc)
+    - [Standard DeePC](#standard-deepc)
+    - [Semi-Data-Driven MPC](#semi-data-driven-mpc-sd-mpc)
+    - [Hybrid DeePC](#hybrid-deepc-hdeepc)
+    - [Pole-Informed DeePC](#pole-informed-deepc-pz-deepc)
+8. [Regularization](#regularization)
+9. [Noise Analysis of Pole Filtering](#noise-analysis-of-pole-filtering)
+10. [Terminal Formulation Study](#terminal-formulation-study)
+11. [Diagnostics](#diagnostics)
+12. [Current Observations](#current-observations)
+13. [Open Research Questions](#open-research-questions)
+14. [Development Status](#development-status)
+15. [References](#references)
+16. [Author](#author)
 
 ---
 
-# 3. Repository Structure
+## Quick Start
+
+### Requirements
+
+- MATLAB
+- Optimization Toolbox (`quadprog`, interior-point-convex algorithm)
+- Control System Toolbox (`ss`, `c2d`)
+
+### Running
+
+Start MATLAB in the repository root:
+
+```matlab
+startup_project          % add all folders to the path
+generate_deepc_data      % generate the training data set
+```
+
+Then run any standalone controller script:
+
+```matlab
+run_mpc_closed_loop
+run_deepc_closed_loop
+run_sdmpc_closed_loop
+run_hdeepc_closed_loop
+```
+
+PZ-DeePC is run with the corresponding pole-prior setup (`pzdeepc_setup_2pole` / `pzdeepc_setup_4pole`).
+
+Each standalone script simulates only its own controller. Cross-controller experiments and sensitivity studies live in `Comparison/` and `tests/`.
+
+---
+
+## Repository Structure
 
 ```text
 Comparative-Study-of-Data-Driven-Control-Methods/
 │
-├── common/
+├── common/                     # plant, parameters, shared utilities
 │   ├── three_mass_params.m
 │   ├── benchmark_settings.m
 │   ├── build_reference.m
@@ -264,10 +132,8 @@ Comparative-Study-of-Data-Driven-Control-Methods/
 │   ├── pz_unfilter_map.m
 │   └── ...
 │
-├── Comparison/
-│   └── ...
-│
-├── tests/
+├── Comparison/                 # cross-controller comparisons
+├── tests/                      # sensitivity and diagnostic studies
 │   ├── deepc_terminal_study.m
 │   ├── pzdeepc_noise_filter_study.m
 │   └── ...
@@ -278,711 +144,496 @@ Comparative-Study-of-Data-Driven-Control-Methods/
 └── README.md
 ```
 
-Standalone controller scripts simulate only the corresponding controller.
+---
 
-Cross-controller experiments are kept inside `Comparison/` and `tests/`.
+## Three-Mass Benchmark System
+
+```text
+wall ──(k1,c1)── m1 ──(k12,c12)── m2 ──(k23,c23,k3)── m3
+          ▲
+          u  (force on m1)
+```
+
+A single force input $u \in \mathbb{R}$ acts on the first mass. The main controlled output is the third-mass position $q_3$.
+
+**State vector**
+
+```math
+x = \begin{bmatrix} q_1 & v_1 & q_2 & v_2 & q_3 & v_3 \end{bmatrix}^{\top}
+```
+
+**True nonlinear dynamics**
+
+```math
+\begin{aligned}
+\dot q_1 &= v_1 \\
+m_1 \dot v_1 &= u - k_1 q_1 - c_1 v_1 + k_{12}(q_2 - q_1) + c_{12}(v_2 - v_1) \\[4pt]
+\dot q_2 &= v_2 \\
+m_2 \dot v_2 &= -k_{12}(q_2 - q_1) - c_{12}(v_2 - v_1) + k_{23}(q_3 - q_2) + k_3 (q_3 - q_2)^3 + c_{23}(v_3 - v_2) \\[4pt]
+\dot q_3 &= v_3 \\
+m_3 \dot v_3 &= -k_{23}(q_3 - q_2) - k_3 (q_3 - q_2)^3 - c_{23}(v_3 - v_2)
+\end{aligned}
+```
+
+### Nonlinearity
+
+The cubic spring between $m_2$ and $m_3$ is the main nonlinearity:
+
+```math
+F_{\mathrm{cubic}} = k_3 (q_3 - q_2)^3,
+\qquad
+F_{\mathrm{linear}} = k_{23} (q_3 - q_2).
+```
+
+The **nonlinear-exposure metric** quantifies how far a controller drives the plant outside its approximately linear operating region:
+
+```math
+\eta_{\mathrm{NL}}
+= 100\,\frac{|F_{\mathrm{cubic}}|}{|F_{\mathrm{linear}}|}
+= 100\,\frac{k_3}{k_{23}}\,(q_3 - q_2)^2,
+\qquad q_3 \neq q_2 .
+```
+
+### Parameters
+
+| Symbol | Value | Symbol | Value |
+|---|---|---|---|
+| $m_1$ | 1.0 kg | $c_1$ | 1.0 N·s/m |
+| $m_2$ | 1.5 kg | $c_{12}$ | 0.8 N·s/m |
+| $m_3$ | 1.2 kg | $c_{23}$ | 0.7 N·s/m |
+| $k_1$ | 20 N/m | $T_s$ | 0.05 s |
+| $k_{12}$ | 15 N/m | $u_{\max}$ | 25 N |
+| $k_{23}$ | 12 N/m | $q_{\max}$ | 0.9 m |
+| $k_3$ | 150 N/m³ | | |
+
+All values are set in [`common/three_mass_params.m`](common/three_mass_params.m).
 
 ---
 
-# 4. DeePC Training Data
+## Nominal Linear Model
 
-The data-driven controllers use measured input-output trajectories
+The nominal model neglects the cubic stiffness term:
 
 ```math
-u^d=
+\dot x = A x + B u,
+```
+
+<details>
+<summary><b>System matrices A and B</b> (click to expand)</summary>
+
+```math
+A =
 \begin{bmatrix}
-u_0 & u_1 & \cdots & u_{T-1}
-\end{bmatrix}
+0 & 1 & 0 & 0 & 0 & 0 \\
+-\frac{k_1 + k_{12}}{m_1} & -\frac{c_1 + c_{12}}{m_1} & \frac{k_{12}}{m_1} & \frac{c_{12}}{m_1} & 0 & 0 \\
+0 & 0 & 0 & 1 & 0 & 0 \\
+\frac{k_{12}}{m_2} & \frac{c_{12}}{m_2} & -\frac{k_{12} + k_{23}}{m_2} & -\frac{c_{12} + c_{23}}{m_2} & \frac{k_{23}}{m_2} & \frac{c_{23}}{m_2} \\
+0 & 0 & 0 & 0 & 0 & 1 \\
+0 & 0 & \frac{k_{23}}{m_3} & \frac{c_{23}}{m_3} & -\frac{k_{23}}{m_3} & -\frac{c_{23}}{m_3}
+\end{bmatrix},
+\qquad
+B =
+\begin{bmatrix} 0 \\ 1/m_1 \\ 0 \\ 0 \\ 0 \\ 0 \end{bmatrix}.
 ```
 
-and
+</details>
+
+The discrete-time nominal model is obtained with a zero-order hold:
 
 ```math
-y^d=
-\begin{bmatrix}
-y_0 & y_1 & \cdots & y_{T-1}
-\end{bmatrix}.
+x_{k+1} = A_d x_k + B_d u_k .
 ```
 
-Full-state output measurement is assumed,
+This model is used fully in MPC and partially in SD-MPC and HDeePC.
+
+### Nominal modal frequencies
+
+| Mode | Frequency |
+|---|---|
+| $f_1$ | $\approx 0.256$ Hz |
+| $f_2$ | $\approx 0.678$ Hz |
+| $f_3$ | $\approx 1.016$ Hz |
+
+With $T_s = 0.05$ s, the sampling frequency is $f_s = 20$ Hz and the Nyquist frequency is $f_N = 10$ Hz. The relevant physical dynamics therefore lie mainly below approximately 1 Hz.
+
+---
+
+## Training Data
+
+### Hankel matrices
+
+The data-driven controllers use measured input–output trajectories
 
 ```math
-y_k=x_k.
+u^d = \begin{bmatrix} u_0 & u_1 & \cdots & u_{T-1} \end{bmatrix},
+\qquad
+y^d = \begin{bmatrix} y_0 & y_1 & \cdots & y_{T-1} \end{bmatrix},
 ```
+
+with full-state output measurement, $y_k = x_k$.
 
 The Hankel depth is
 
 ```math
-L=T_{\mathrm{ini}}+N,
+L = T_{\mathrm{ini}} + N,
 ```
 
-where:
-
-- $T_{\mathrm{ini}}$ is the past horizon,
-- $N$ is the prediction horizon.
-
-A block Hankel matrix is constructed as
+where $`T_{\mathrm{ini}}`$ is the past horizon and $N$ the prediction horizon. The block Hankel matrix is
 
 ```math
-H_L(u^d)
-=
+H_L(u^d) =
 \begin{bmatrix}
-u_0 & u_1 & \cdots\\
-u_1 & u_2 & \cdots\\
-\vdots & \vdots & \ddots\\
+u_0 & u_1 & \cdots \\
+u_1 & u_2 & \cdots \\
+\vdots & \vdots & \ddots \\
 u_{L-1} & u_L & \cdots
-\end{bmatrix}.
+\end{bmatrix},
 ```
 
-The number of behavioral coefficient variables is
+giving $n_g = T - L + 1$ behavioral coefficient variables.
 
-```math
-n_g=T-L+1.
-```
+For standard DeePC, the training input is checked for persistent excitation of approximately order $L + n$, with nominal system order $n = 6$.
 
-For standard DeePC, the training input is checked for persistent excitation of approximately order
-
-```math
-L+n,
-```
-
-where the nominal system order is
-
-```math
-n=6.
-```
-
----
-
-# 5. Measurement Noise
+### Measurement noise
 
 Noisy output data are generated as
 
 ```math
-y_k^{\mathrm{meas}}
-=
-y_k^{\mathrm{true}}+e_k,
+y_k^{\mathrm{meas}} = y_k^{\mathrm{true}} + e_k,
+\qquad
+e_k \sim \mathcal{N}(0, \Sigma_y).
 ```
 
-with
+The standard deviation of each state channel is scaled by the RMS value of its clean signal:
 
 ```math
-e_k\sim\mathcal N(0,\Sigma_y).
+\sigma_{e_i} = \eta \sqrt{\frac{1}{T} \sum_{k=0}^{T-1} y_i(k)^2 } .
 ```
 
-The standard deviation of each state channel is scaled using the RMS value of its clean signal:
+For example, $\eta = 0.05$ corresponds to a noise standard deviation equal to 5 % of the RMS magnitude of each channel.
 
-```math
-\sigma_{e_i}
-=
-\eta
-\sqrt{
-\frac{1}{T}
-\sum_{k=0}^{T-1}
-y_i(k)^2
-}.
-```
-
-For example, $\eta=0.05$ corresponds to a noise standard deviation equal to 5% of the RMS magnitude of each state channel.
-
-The clean physical state is stored separately from the noisy measured state so that physical diagnostics such as nonlinear spring exposure are not contaminated by artificial measurement noise.
+> [!NOTE]
+> The clean physical state is stored separately from the noisy measurement, so physical diagnostics such as nonlinear spring exposure are not contaminated by artificial measurement noise.
 
 ---
 
-# 6. Common Tracking Formulation
+## Common Tracking Formulation
 
-The desired coordinated state is
-
-```math
-x_r=
-\begin{bmatrix}
-r&0&r&0&r&0
-\end{bmatrix}^{\top}.
-```
-
-The stacked prediction reference is
+The desired coordinated state and its stacked reference are
 
 ```math
-X_r=
-\mathbf 1_N\otimes x_r.
+x_r = \begin{bmatrix} r & 0 & r & 0 & r & 0 \end{bmatrix}^{\top},
+\qquad
+X_r = \mathbf{1}_N \otimes x_r .
 ```
 
-The common tracking cost is
+All controllers share the tracking cost
 
 ```math
 J_{\mathrm{track}}
-=
-\|X-X_r\|_{Q_N}^2
-+
-\|U-\mathbf 1_Nu_s\|_{R_N}^2,
-```
-
-with
-
-```math
-Q_N=I_N\otimes Q
-```
-
-and
-
-```math
-R_N=I_N\otimes R.
+= \| X - X_r \|_{Q_N}^2 + \| U - \mathbf{1}_N u_s \|_{R_N}^2,
+\qquad
+Q_N = I_N \otimes Q,
+\quad
+R_N = I_N \otimes R .
 ```
 
 The steady input $u_s$ is optimized internally.
 
-For a coordinated static configuration,
+For the coordinated static configuration $q_1 = q_2 = q_3 = r$, $v_1 = v_2 = v_3 = 0$, the physical equilibrium input is
 
 ```math
-q_1=q_2=q_3=r,
+u_{\mathrm{eq}} = k_1 r .
 ```
 
-```math
-v_1=v_2=v_3=0,
-```
-
-the physical equilibrium input is
-
-```math
-u_{\mathrm{eq}}=k_1r.
-```
-
-This analytical equilibrium value is not supplied to the controllers and is used only as a diagnostic.
+> [!IMPORTANT]
+> $u_{\mathrm{eq}}$ is **not** supplied to any controller. It is used only as a diagnostic.
 
 ---
 
-# 7. Model Predictive Control
+## Controllers
 
-MPC uses the nominal discrete model
+### Model Predictive Control (MPC)
 
-```math
-x_{k+1}=A_dx_k+B_du_k.
-```
-
-The stacked prediction can be written as
+The model-based benchmark. Using the nominal discrete model, the stacked prediction is
 
 ```math
-X=S_xx_0+S_uU.
+X = S_x x_0 + S_u U ,
 ```
 
-The MPC optimization problem is
+and the optimization problem is
 
 ```math
 \begin{aligned}
-\min_{U,u_s}\quad
-&
-\|X-X_r\|_{Q_N}^2
-+
-\|U-\mathbf 1_Nu_s\|_{R_N}^2
-\\
+\min_{U,\,u_s}\quad
+& \| X - X_r \|_{Q_N}^2 + \| U - \mathbf{1}_N u_s \|_{R_N}^2 \\
 \text{s.t.}\quad
-&
-X=S_xx_0+S_uU,
-\\
-&
-|u_k|\le u_{\max},
-\\
-&
-|q_i(k)|\le q_{\max}.
+& X = S_x x_0 + S_u U, \\
+& |u_k| \le u_{\max}, \\
+& |q_i(k)| \le q_{\max}.
 \end{aligned}
 ```
 
-MPC is used as the model-based benchmark.
-
 ---
 
-# 8. Standard DeePC
+### Standard DeePC
 
 The Hankel matrices are partitioned into past and future blocks:
 
 ```math
-H_L(u^d)
-=
-\begin{bmatrix}
-U_p\\
-U_f
-\end{bmatrix},
-```
-
-```math
-H_L(y^d)
-=
-\begin{bmatrix}
-Y_p\\
-Y_f
-\end{bmatrix}.
+H_L(u^d) = \begin{bmatrix} U_p \\ U_f \end{bmatrix},
+\qquad
+H_L(y^d) = \begin{bmatrix} Y_p \\ Y_f \end{bmatrix}.
 ```
 
 The behavioral equations are
 
 ```math
-U_pg=u_{\mathrm{ini}},
+U_p g = u_{\mathrm{ini}},
+\qquad
+Y_p g - \sigma = y_{\mathrm{ini}},
+\qquad
+U = U_f g,
+\qquad
+X = Y_f g ,
 ```
 
-```math
-Y_pg-\sigma=y_{\mathrm{ini}},
-```
-
-```math
-U=U_fg,
-```
-
-```math
-X=Y_fg.
-```
-
-The decision vector is
-
-```math
-z=
-\begin{bmatrix}
-g\\
-\sigma\\
-u_s
-\end{bmatrix}.
-```
-
-The DeePC optimization problem is
+with decision vector $z = [\,g^{\top}\ \ \sigma^{\top}\ \ u_s\,]^{\top}$. The DeePC problem is
 
 ```math
 \begin{aligned}
-\min_{g,\sigma,u_s}\quad
-&
-\|Y_fg-X_r\|_{Q_N}^2
-+
-\|U_fg-\mathbf 1_Nu_s\|_{R_N}^2
-\\
-&
-+\lambda_g\|g\|_2^2
-+\lambda_\sigma\|\sigma\|_2^2
-\\
+\min_{g,\,\sigma,\,u_s}\quad
+& \| Y_f g - X_r \|_{Q_N}^2 + \| U_f g - \mathbf{1}_N u_s \|_{R_N}^2
+  + \lambda_g \| g \|_2^2 + \lambda_\sigma \| \sigma \|_2^2 \\
 \text{s.t.}\quad
-&
-U_pg=u_{\mathrm{ini}},
-\\
-&
-Y_pg-\sigma=y_{\mathrm{ini}},
-\\
-&
-|U_fg|\le u_{\max},
-\\
-&
-|S_qY_fg|\le q_{\max}.
+& U_p g = u_{\mathrm{ini}}, \\
+& Y_p g - \sigma = y_{\mathrm{ini}}, \\
+& |U_f g| \le u_{\max}, \\
+& |S_q Y_f g| \le q_{\max}.
 \end{aligned}
 ```
 
 ---
 
-# 9. Behavioral Coefficient Regularization
+### Semi-Data-Driven MPC (SD-MPC)
 
-For noisy data, the future Hankel matrix can be written as
+SD-MPC splits the prediction into a nominal part and a data-driven residual:
 
 ```math
-Y_f=Y_f^0+E_f,
+X = X_M + X_D,
+\qquad
+X_M = S_x x_M + S_u U .
 ```
 
-where $Y_f^0$ is the noise-free trajectory matrix and $E_f$ contains the measurement-noise contribution.
-
-The DeePC prediction becomes
+The residual training signal and its Hankel matrix are
 
 ```math
-Y_fg
-=
-Y_f^0g+E_fg.
-```
-
-The noise contribution is therefore
-
-```math
-E_fg.
-```
-
-Using the induced matrix norm,
-
-```math
-\|E_fg\|_2
-\le
-\|E_f\|_2\|g\|_2.
-```
-
-This shows why large behavioral coefficient vectors can amplify noise contained in the Hankel trajectory.
-
-The regularization term
-
-```math
-\lambda_g\|g\|_2^2
-```
-
-is therefore used to limit excessive behavioral combinations.
-
-The observed tradeoff is
-
-```math
-\lambda_g\downarrow
-\quad\Longrightarrow\quad
-\|g\|_2\uparrow
-\quad\Longrightarrow\quad
-\text{noise amplification}\uparrow.
-```
-
-However, excessive regularization can reduce useful trajectory freedom:
-
-```math
-\lambda_g\uparrow
-\quad\Longrightarrow\quad
-\text{trajectory flexibility}\downarrow.
-```
-
-Therefore $\lambda_g$ is treated as an important robustness parameter.
-
----
-
-# 10. Past-Trajectory Slack
-
-For noisy measurements, exact past matching is relaxed using
-
-```math
-Y_pg-\sigma=y_{\mathrm{ini}}.
-```
-
-The slack is penalized by
-
-```math
-\lambda_\sigma\|\sigma\|_2^2.
-```
-
-Large $\lambda_\sigma$ forces the optimizer to explain noisy past measurements mainly through $g$.
-
-Smaller $\lambda_\sigma$ allows greater mismatch between the measured past and the behavioral trajectory.
-
-The interaction between $\lambda_g$ and $\lambda_\sigma$ is therefore important under noisy training data.
-
----
-
-# 11. Semi-Data-Driven MPC
-
-SD-MPC decomposes the full state prediction into nominal and residual components:
-
-```math
-X=X_M+X_D.
-```
-
-The nominal prediction is
-
-```math
-X_M=S_xx_M+S_uU.
-```
-
-The residual training signal is
-
-```math
-r_d=y_d-x_{M,d}.
-```
-
-A residual Hankel matrix is constructed as
-
-```math
-H_L(r_d)
-=
-\begin{bmatrix}
-R_p\\
-R_f
-\end{bmatrix}.
+r_d = y_d - x_{M,d},
+\qquad
+H_L(r_d) = \begin{bmatrix} R_p \\ R_f \end{bmatrix}.
 ```
 
 The residual behavioral equations are
 
 ```math
-U_pg=u_{\mathrm{ini}},
+U_p g = u_{\mathrm{ini}},
+\qquad
+R_p g - \sigma = r_{\mathrm{ini}},
+\qquad
+U = U_f g,
+\qquad
+X_D = R_f g ,
 ```
+
+so the complete prediction becomes
 
 ```math
-R_pg-\sigma=r_{\mathrm{ini}},
+X = S_x x_M + S_u U_f g + R_f g .
 ```
 
-```math
-U=U_fg,
-```
-
-```math
-X_D=R_fg.
-```
-
-The complete prediction becomes
-
-```math
-X=
-S_xx_M
-+
-S_uU_fg
-+
-R_fg.
-```
-
-Thus SD-MPC uses the nominal model for the main dynamics while the data-driven component predicts the model mismatch.
+The nominal model captures the main dynamics, while the data-driven component predicts the model mismatch.
 
 ---
 
-# 12. Hybrid DeePC
+### Hybrid DeePC (HDeePC)
 
-HDeePC partitions the state into known and unknown subsystems,
-
-```math
-x=
-\begin{bmatrix}
-x_\kappa\\
-x_u
-\end{bmatrix}.
-```
-
-For the three-mass benchmark,
+HDeePC partitions the state into a known and an unknown subsystem:
 
 ```math
-x_\kappa=
-\begin{bmatrix}
-q_1\\
-v_1
-\end{bmatrix},
-```
-
-and
-
-```math
-x_u=
-\begin{bmatrix}
-q_2\\
-v_2\\
-q_3\\
-v_3
-\end{bmatrix}.
+x = \begin{bmatrix} x_\kappa \\ x_u \end{bmatrix},
+\qquad
+x_\kappa = \begin{bmatrix} q_1 \\ v_1 \end{bmatrix},
+\qquad
+x_u = \begin{bmatrix} q_2 \\ v_2 \\ q_3 \\ v_3 \end{bmatrix}.
 ```
 
 The jointly discretized nominal model is partitioned as
 
 ```math
-\begin{bmatrix}
-x_\kappa^+\\
-x_u^+
-\end{bmatrix}
+\begin{bmatrix} x_\kappa^+ \\ x_u^+ \end{bmatrix}
 =
-\begin{bmatrix}
-A_\kappa&A_c\\
-A_f&A_u
-\end{bmatrix}
-\begin{bmatrix}
-x_\kappa\\
-x_u
-\end{bmatrix}
+\begin{bmatrix} A_\kappa & A_c \\ A_f & A_u \end{bmatrix}
+\begin{bmatrix} x_\kappa \\ x_u \end{bmatrix}
 +
-\begin{bmatrix}
-B_\kappa\\
-B_u
-\end{bmatrix}u.
+\begin{bmatrix} B_\kappa \\ B_u \end{bmatrix} u .
 ```
 
-The unknown subsystem is represented through data:
+The **unknown subsystem** is represented through data:
 
 ```math
-U_pg=u_{\mathrm{ini}},
+U_p g = u_{\mathrm{ini}},
+\qquad
+Y_{u,p} g - \sigma = y_{u,\mathrm{ini}},
+\qquad
+U = U_f g,
+\qquad
+Y_u = Y_{u,f} g .
 ```
 
+The **known subsystem** evolves according to
+
 ```math
-Y_{u,p}g-\sigma=y_{u,\mathrm{ini}},
+x_\kappa(k+1) = A_\kappa x_\kappa(k) + A_y y_u(k) + B_\kappa u(k).
 ```
 
-```math
-U=U_fg,
-```
+Condensing the known-state recursion gives
 
 ```math
-Y_u=Y_{u,f}g.
-```
-
-The known subsystem evolves according to
-
-```math
-x_\kappa(k+1)
-=
-A_\kappa x_\kappa(k)
-+
-A_y y_u(k)
-+
-B_\kappa u(k).
-```
-
-After condensing the known-state recursion,
-
-```math
-X=
-S_{\mathrm{full}}x_\kappa(0)
-+
-G_{\mathrm{full}}g.
+X = S_{\mathrm{full}} \, x_\kappa(0) + G_{\mathrm{full}} \, g .
 ```
 
 HDeePC therefore combines explicit subsystem physics with a behavioral representation of the unknown subsystem.
 
 ---
 
-# 13. Pole-Informed DeePC
+### Pole-Informed DeePC (PZ-DeePC)
 
-PZ-DeePC incorporates known poles directly into the behavioral predictor.
-
-For $s_p$ known poles,
+PZ-DeePC embeds known pole locations directly into the behavioral predictor. For $s_p$ known poles,
 
 ```math
-P(z)
-=
-\prod_{i=1}^{s_p}(z-\lambda_i).
+P(z) = \prod_{i=1}^{s_p} (z - \lambda_i)
+     = z^{s_p} + a_1 z^{s_p - 1} + \cdots + a_{s_p}.
 ```
 
-Equivalently,
+**Output filtering**
 
 ```math
-P(z)
-=
-z^{s_p}
-+a_1z^{s_p-1}
-+\cdots
-+a_{s_p}.
-```
-
-The output filtering operation is
-
-```math
-y_k'
-=
-y_k
-+a_1y_{k-1}
-+\cdots
-+a_{s_p}y_{k-s_p}.
-```
-
-In matrix form,
-
-```math
-y'=Q_y y.
-```
-
-The filtered output Hankel matrix is constructed using
-
-```math
-H_y'=Q_yH_y.
-```
-
-It is partitioned into a shortened filtered-past block and a future block:
-
-```math
-Y'_{p-s_p},
+y_k' = y_k + a_1 y_{k-1} + \cdots + a_{s_p} y_{k-s_p},
 \qquad
-Y_f'.
+y' = Q_y \, y,
+\qquad
+H_y' = Q_y H_y .
 ```
 
-The filtered behavioral equations are
+The filtered Hankel matrix is partitioned into a shortened filtered-past block $`Y'_{p-s_p}`$ and a future block $Y_f'$.
+
+**Filtered behavioral equations**
 
 ```math
-U_pg=u_{\mathrm{ini}},
+U_p g = u_{\mathrm{ini}},
+\qquad
+Y'_{p-s_p} g - \sigma = y_{\mathrm{ini}}',
+\qquad
+y_f' = Y_f' g .
 ```
+
+**Reconstruction of the physical trajectory**
 
 ```math
-Y'_{p-s_p}g-\sigma
-=
-y_{\mathrm{ini}}'.
+X = M Y_f' g + d_{\mathrm{past}} = G_x g + d_{\mathrm{past}},
+\qquad
+G_x = M Y_f' .
 ```
 
-The future filtered prediction is
-
-```math
-y_f'=Y_f'g.
-```
-
-The physical trajectory is reconstructed using
-
-```math
-X=
-MY_f'g+d_{\mathrm{past}}.
-```
-
-Defining
-
-```math
-G_x=MY_f',
-```
-
-gives
-
-```math
-X=G_xg+d_{\mathrm{past}}.
-```
-
-The PZ-DeePC optimization problem is
+**Optimization problem**
 
 ```math
 \begin{aligned}
-\min_{g,\sigma,u_s}\quad
-&
-\|G_xg+d_{\mathrm{past}}-X_r\|_{Q_N}^2
-\\
-&
-+
-\|U_fg-\mathbf 1_Nu_s\|_{R_N}^2
-\\
-&
-+
-\lambda_g\|g\|_2^2
-+
-\lambda_\sigma\|\sigma\|_2^2.
+\min_{g,\,\sigma,\,u_s}\quad
+& \| G_x g + d_{\mathrm{past}} - X_r \|_{Q_N}^2
+  + \| U_f g - \mathbf{1}_N u_s \|_{R_N}^2 \\
+& + \lambda_g \| g \|_2^2 + \lambda_\sigma \| \sigma \|_2^2 .
 \end{aligned}
 ```
 
-Both 2-pole and 4-pole PZ-DeePC variants are implemented.
+Both **2-pole** and **4-pole** variants are implemented.
 
 ---
 
-# 14. PZ-DeePC Noise Transformation
+## Regularization
 
-Suppose the measured output is
+### Behavioral coefficient regularization
 
-```math
-y=y_0+e.
-```
-
-After pole filtering,
+With noisy data, the future Hankel block can be written as $Y_f = Y_f^0 + E_f$, where $Y_f^0$ is the noise-free trajectory matrix and $E_f$ the noise contribution. The prediction becomes
 
 ```math
-y'
-=
-Q_yy_0+Q_ye.
+Y_f g = Y_f^0 g + E_f g,
+\qquad
+\| E_f g \|_2 \le \| E_f \|_2 \, \| g \|_2 .
 ```
 
-The filtered noise is therefore
+Large coefficient vectors therefore amplify noise contained in the Hankel data. The regularization term $\lambda_g \lVert  g \rVert _2^2$ limits excessive behavioral combinations, resulting in the trade-off
 
 ```math
-e'=Q_ye.
+\lambda_g \downarrow \;\Longrightarrow\; \| g \|_2 \uparrow \;\Longrightarrow\; \text{noise amplification} \uparrow,
+\qquad
+\lambda_g \uparrow \;\Longrightarrow\; \text{trajectory flexibility} \downarrow .
 ```
 
-Its covariance becomes
+$\lambda_g$ is therefore treated as a key robustness parameter.
+
+### Past-trajectory slack
+
+Exact past matching is relaxed through $Y_p g - \sigma = y_{\mathrm{ini}}$ with penalty $\lambda_\sigma \lVert  \sigma \rVert _2^2$.
+
+- **Large** $\lambda_\sigma$ forces the optimizer to explain the noisy past mainly through $g$.
+- **Small** $\lambda_\sigma$ allows larger mismatch between the measured past and the behavioral trajectory.
+
+The interaction between $\lambda_g$ and $\lambda_\sigma$ is important under noisy training data.
+
+### Projection regularization
+
+As an alternative to $J_g = \lambda_g \lVert  g \rVert _2^2$, projection-based regularization is investigated:
 
 ```math
-\Sigma_{e'}
-=
-Q_y\Sigma_eQ_y^\top.
+J_g = \lambda_g \, \| (I - \Pi) \, g \|_2^2 ,
 ```
 
-Even if $e$ is white Gaussian noise, $e'$ is generally colored.
+where $\Pi$ projects onto the relevant behavioral subspace.
 
-For the current 4-pole filter, the measured standard-deviation amplification was approximately
+| | Penalizes |
+|---|---|
+| Direct $L_2$ | the magnitude of every component of $g$ |
+| Projection | mainly coefficient directions associated with ambiguity or weak behavioral constraints |
+
+This may be particularly useful for PZ-DeePC, since pole filtering changes both the scale of the behavioral coordinates and the statistical properties of the noise.
+
+---
+
+## Noise Analysis of Pole Filtering
+
+### Noise transformation
+
+With measured output $y = y_0 + e$, pole filtering gives
 
 ```math
-7.6 \text{ to } 8.7.
+y' = Q_y y_0 + Q_y e,
+\qquad
+e' = Q_y e,
+\qquad
+\Sigma_{e'} = Q_y \Sigma_e Q_y^{\top}.
 ```
 
-The measured total noise-energy amplification was approximately
+Even if $e$ is white Gaussian noise, $e'$ is generally **colored**.
 
-```math
-70\times.
-```
+For the 4-pole filter used in this project:
 
-This reveals an important PZ-DeePC tradeoff:
+| Quantity | Measured amplification |
+|---|---|
+| Noise standard deviation | $\approx 7.6$ to $8.7\times$ |
+| Total noise energy | $\approx 70\times$ |
+
+This exposes a central PZ-DeePC trade-off:
 
 ```math
 \text{effective-order reduction}
@@ -990,418 +641,163 @@ This reveals an important PZ-DeePC tradeoff:
 \text{measurement-noise amplification}.
 ```
 
----
+### Power spectral density
 
-# 15. Power Spectral Density
-
-Power spectral density describes how signal variance or power is distributed over frequency.
-
-For ideal white noise,
+The power spectral density describes how signal power is distributed over frequency. For ideal white noise $S_e(f) \approx \text{const}$, and after linear filtering
 
 ```math
-S_e(f)\approx\text{constant}.
+S_{e'}(\omega) = \left| P\!\left(e^{j\omega}\right) \right|^2 S_e(\omega).
 ```
 
-After linear filtering,
+The 4-pole PZ filter strongly suppresses low-frequency content, while its gain increases toward the Nyquist frequency. The originally white measurement noise is therefore shaped strongly toward high frequencies, outside the band ($\lesssim 1$ Hz) where the relevant physical dynamics lie.
+
+### Autocorrelation
+
+The autocorrelation at lag $\ell$ is
 
 ```math
-S_{e'}(\omega)
-=
-|P(e^{j\omega})|^2S_e(\omega).
+R_e(\ell) = \mathbb{E}\left[ e_k \, e_{k-\ell} \right],
 ```
 
-The main nominal mechanical frequencies of the benchmark are approximately
+and ideal white noise satisfies $R_e(\ell) = 0$ for $\ell \neq 0$. After pole filtering,
 
 ```math
-f_1\approx0.256\ \mathrm{Hz},
+e_k' = e_k + a_1 e_{k-1} + \cdots + a_{s_p} e_{k-s_p},
 ```
 
-```math
-f_2\approx0.678\ \mathrm{Hz},
-```
+so neighboring filtered samples share several raw noise samples, and $R_{e'}(\ell) \neq 0$ for small nonzero lags.
 
-and
+Since PSD and autocorrelation form a Fourier-transform pair, $S_e(\omega) = \mathcal{F}\{R_e(\ell)\}$:
 
 ```math
-f_3\approx1.016\ \mathrm{Hz}.
-```
-
-With
-
-```math
-T_s=0.05\ \mathrm{s},
-```
-
-the sampling frequency is
-
-```math
-f_s=20\ \mathrm{Hz},
-```
-
-and the Nyquist frequency is
-
-```math
-f_N=10\ \mathrm{Hz}.
-```
-
-The important physical dynamics therefore lie mainly below approximately $1$ Hz.
-
-The 4-pole PZ filter strongly suppresses low-frequency content while its gain increases toward the Nyquist frequency.
-
-As a result, the originally white measurement noise becomes strongly shaped toward higher frequencies.
-
----
-
-# 16. Autocorrelation
-
-Autocorrelation measures how strongly a signal is correlated with delayed versions of itself.
-
-At lag $\ell$,
-
-```math
-R_e(\ell)
-=
-\mathbb E[e_k e_{k-\ell}].
-```
-
-Ideal white noise satisfies
-
-```math
-R_e(\ell)=0,
+\text{flat PSD} \;\Longleftrightarrow\; \text{white, uncorrelated noise},
 \qquad
-\ell\neq0.
-```
-
-After pole filtering,
-
-```math
-e_k'
-=
-e_k
-+a_1e_{k-1}
-+\cdots
-+a_{s_p}e_{k-s_p}.
-```
-
-Neighboring filtered samples therefore share several of the same raw noise samples.
-
-Consequently,
-
-```math
-R_{e'}(\ell)\neq0
-```
-
-for small nonzero lags.
-
-Power spectral density and autocorrelation are Fourier-transform pairs:
-
-```math
-S_e(\omega)
-=
-\mathcal F\{R_e(\ell)\}.
-```
-
-Therefore,
-
-```math
-\text{flat PSD}
-\quad\Longleftrightarrow\quad
-\text{white uncorrelated noise},
-```
-
-while
-
-```math
-\text{shaped PSD}
-\quad\Longleftrightarrow\quad
-\text{colored correlated noise}.
+\text{shaped PSD} \;\Longleftrightarrow\; \text{colored, correlated noise}.
 ```
 
 ---
 
-# 17. Terminal Formulation Study
+## Terminal Formulation Study
 
 Three terminal formulations are investigated.
 
-## 17.1 Hard Terminal Equality
-
-The original DeePC formulation uses
+**1. Hard terminal equality** (original DeePC formulation)
 
 ```math
-x_N=x_r
+x_N = x_r,
+\qquad
+u_N = u_s .
 ```
 
-and
+**2. No terminal constraint**
+
+The terminal equalities are removed completely. This enlarges the feasible trajectory set and lets the running objective alone determine the predicted trajectory.
+
+**3. Noise-aware Frobenius terminal penalty**
+
+For a terminal window of length $n_T$,
 
 ```math
-u_N=u_s.
-```
-
-## 17.2 No Terminal Constraint
-
-The terminal equalities are removed completely.
-
-This enlarges the feasible trajectory set and allows the running objective alone to determine the predicted trajectory.
-
-## 17.3 Noise-Aware Frobenius Terminal Penalty
-
-For a terminal window,
-
-```math
-E_T=
+E_T =
 \begin{bmatrix}
-x_{N-n_T+1}-x_r &
-\cdots &
-x_N-x_r
-\end{bmatrix}.
+x_{N-n_T+1} - x_r & \cdots & x_N - x_r
+\end{bmatrix},
+\qquad
+J_T = \lambda_T \, \big\| W^{1/2} E_T \big\|_F^2,
+\qquad
+W = \Sigma_y^{-1}.
 ```
 
-A weighted Frobenius penalty is introduced:
+This penalizes terminal deviations relative to the uncertainty of each state channel instead of enforcing exact terminal equality.
 
-```math
-J_T=
-\lambda_T
-\|W^{1/2}E_T\|_F^2.
-```
-
-A noise-aware state weighting can be chosen as
-
-```math
-W=\Sigma_y^{-1}.
-```
-
-This penalizes terminal deviations relative to the uncertainty of each state channel rather than enforcing exact terminal equality.
-
-In the tested noisy-data case, all three terminal formulations produced very similar trajectories.
-
-This suggests that the terminal constraint was not the dominant source of the observed noisy DeePC degradation.
+> [!NOTE]
+> In the tested noisy-data case, all three terminal formulations produced very similar trajectories. This suggests that the terminal constraint was **not** the dominant source of the observed noisy DeePC degradation.
 
 ---
 
-# 18. Projection Regularization
+## Diagnostics
 
-Standard DeePC regularization uses
-
-```math
-J_g=
-\lambda_g\|g\|_2^2.
-```
-
-An alternative is projection-based regularization:
-
-```math
-J_g
-=
-\lambda_g
-\|(I-\Pi)g\|_2^2.
-```
-
-Here, $\Pi$ projects onto the relevant behavioral subspace.
-
-The conceptual distinction is:
-
-- direct $L_2$ regularization penalizes the magnitude of every component of $g$,
-- projection regularization penalizes mainly coefficient directions associated with ambiguity or weak behavioral constraints.
-
-This may be particularly useful for PZ-DeePC because pole filtering changes both the scale of the behavioral coordinates and the statistical properties of the noise.
+| Quantity | Definition |
+|---|---|
+| Tracking RMSE | $`\mathrm{RMSE}_{q_3} = \sqrt{\frac{1}{N_s} \sum_k \left( q_3(k) - r(k) \right)^2}`$ |
+| Behavioral coefficient norm | $\lVert g \rVert_2$ |
+| Past-trajectory slack norm | $\lVert \sigma \rVert_2$ |
+| One-step prediction error | $`\lVert e_1(k) \rVert_2,\ \ e_1(k) = x(k+1) - \hat x_{1 \mid k}`$ |
+| Nonlinear spring exposure | $`100\,\lvert F_{\mathrm{cubic}} \rvert / \lvert F_{\mathrm{linear}} \rvert`$ |
+| Optimized steady input | $u_s$, compared with the physical diagnostic $k_1 r$ |
+| QP solve time | recorded at every closed-loop step |
 
 ---
 
-# 19. Main Diagnostic Quantities
-
-## Tracking RMSE
-
-```math
-\mathrm{RMSE}_{q_3}
-=
-\sqrt{
-\frac{1}{N_s}
-\sum_k
-(q_3(k)-r(k))^2
-}.
-```
-
-## Behavioral coefficient norm
-
-```math
-\|g\|_2.
-```
-
-## Past-trajectory slack norm
-
-```math
-\|\sigma\|_2.
-```
-
-## One-step prediction error
-
-```math
-e_1(k)
-=
-x(k+1)-\hat x_{1|k},
-```
-
-with
-
-```math
-\|e_1(k)\|_2.
-```
-
-## Nonlinear spring exposure
-
-```math
-100
-\frac{|F_{\mathrm{cubic}}|}
-{|F_{\mathrm{linear}}|}.
-```
-
-## Optimized steady input
-
-The internally optimized steady input $u_s$ is compared with the physical diagnostic
-
-```math
-k_1r.
-```
-
-## QP solve time
-
-Solver time is recorded at every closed-loop step to compare computational complexity across the different methods.
-
----
-
-# 20. Current Experimental Observations
-
-The experiments performed so far indicate the following.
+## Current Observations
 
 1. Large behavioral coefficient vectors can strongly amplify noisy Hankel data.
-
 2. Increasing $\lambda_g$ can significantly improve the robustness of standard DeePC under noisy training data.
-
 3. Excessive $\lambda_g$ can reduce useful trajectory freedom and make the controller overly conservative.
-
-4. The same numerical value of $\lambda_g$ is not necessarily appropriate for every controller because the behavioral representations have different scaling.
-
+4. The same value of $\lambda_g$ is not necessarily appropriate for every controller, because the behavioral representations have different scaling.
 5. PZ-DeePC requires separate regularization tuning because its filtered data have different statistical properties.
-
 6. Pole filtering can strongly amplify white measurement noise.
-
-7. The 4-pole filter tested in this project amplified noise standard deviation by approximately $7.6$ to $8.7$ times.
-
-8. The corresponding total noise-energy amplification was approximately $70$ times.
-
+7. The 4-pole filter amplified the noise standard deviation by approximately $7.6$–$8.7\times$.
+8. The corresponding total noise-energy amplification was approximately $70\times$.
 9. Pole filtering transforms initially white noise into colored, temporally correlated noise.
-
 10. The tested terminal formulation was not the dominant source of noisy DeePC degradation.
-
 11. Poor prediction can generate aggressive control actions that drive the nonlinear plant outside the region represented by the training data.
-
-12. The interaction between data noise, $g$-regularization, slack regularization, and prior-information filtering is a major focus of the current study.
+12. The interaction between data noise, $g$-regularization, slack regularization and prior-information filtering is a major focus of the current study.
 
 ---
 
-# 21. Current Research Questions
+## Open Research Questions
 
-The project currently investigates:
-
-- How much prior knowledge is beneficial in predictive data-driven control?
-- How do the controllers behave with limited training datasets?
+- How much prior knowledge is beneficial in data-driven predictive control?
+- How do the controllers behave with limited training data?
 - How should $\lambda_g$ be selected under noisy data?
 - How should $\lambda_\sigma$ be selected relative to $\lambda_g$?
 - Is projection regularization preferable to direct $L_2$ regularization?
 - How does pole filtering alter measurement-noise statistics?
 - How do 2-pole and 4-pole PZ-DeePC compare?
-- Does increasing prior information reduce data requirements?
-- Does increasing prior information also increase noise sensitivity?
+- Does more prior information reduce data requirements?
+- Does more prior information also increase noise sensitivity?
 - How does nonlinear plant exposure interact with prediction error?
 - How does computational complexity scale with the different behavioral formulations?
 
 ---
 
-# 22. Running the Project
+## Development Status
 
-Start MATLAB in the repository root and run:
+🚧 **Under active development.** Current work includes:
 
-```matlab
-startup_project
-```
-
-Generate the training data using:
-
-```matlab
-generate_deepc_data
-```
-
-Individual controllers can then be run through their standalone scripts.
-
-Examples:
-
-```matlab
-run_mpc_closed_loop
-run_deepc_closed_loop
-run_sdmpc_closed_loop
-run_hdeepc_closed_loop
-```
-
-PZ-DeePC can be run using the corresponding pole-prior setup.
-
-Cross-controller studies and sensitivity tests are located inside `Comparison/` and `tests/`.
+- [ ] $\lambda_g$ sensitivity studies
+- [ ] $\lambda_\sigma$ sensitivity studies
+- [ ] limited-data experiments
+- [ ] noisy-data experiments
+- [ ] 2-pole vs. 4-pole PZ-DeePC
+- [ ] projection regularization
+- [ ] terminal-condition studies
+- [ ] PZ-DeePC noise-filter analysis
+- [ ] one-step prediction diagnostics
+- [ ] nonlinear-exposure analysis
+- [ ] computational-load comparison
 
 ---
 
-# 23. MATLAB Requirements
+## References
 
-The project uses MATLAB and mainly relies on:
+This project builds on literature on:
 
-- Optimization Toolbox
-- Control System Toolbox
+- Data-Enabled Predictive Control (DeePC)
+- Hybrid Data-Enabled Predictive Control (HDeePC)
+- Semi-Data-Driven Model Predictive Control (SD-MPC)
+- predictive control with prior system knowledge
+- pole-informed data-driven prediction
+- model predictive tracking
 
-Quadratic programs are solved using:
-
-```matlab
-quadprog
-```
-
-with the convex interior-point algorithm.
+Detailed academic references are documented in the accompanying research report.
 
 ---
 
-# 24. Development Status
-
-The project is under active development.
-
-Current work includes:
-
-- $\lambda_g$ sensitivity studies,
-- $\lambda_\sigma$ sensitivity studies,
-- limited-data experiments,
-- noisy-data experiments,
-- 2-pole versus 4-pole PZ-DeePC,
-- projection regularization,
-- terminal-condition studies,
-- PZ-DeePC noise-filter analysis,
-- one-step prediction diagnostics,
-- nonlinear-exposure analysis,
-- computational-load comparison.
-
----
-
-# 25. References
-
-The project is based on literature related to:
-
-- Data-Enabled Predictive Control,
-- Hybrid Data-Enabled Predictive Control,
-- Semi-Data-Driven Model Predictive Control,
-- predictive control with prior system knowledge,
-- pole-informed data-driven prediction,
-- model predictive tracking.
-
-The detailed academic references are documented in the accompanying research report.
-
----
-
-# 26. Author
+## Author
 
 **Erdem Özdemir**
 
-Comparative study of model-based, data-driven, hybrid, and prior-informed predictive control methods for nonlinear dynamical systems.
+Comparative study of model-based, data-driven, hybrid and prior-informed predictive control methods for nonlinear dynamical systems.
+
