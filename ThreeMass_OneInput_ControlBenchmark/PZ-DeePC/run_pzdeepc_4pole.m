@@ -1,4 +1,4 @@
-    clear; clc; close all;
+clear; clc; close all;
 
 p=three_mass_params(); s=benchmark_settings(p);
 projectRoot=fileparts(fileparts(mfilename('fullpath'))); if isempty(projectRoot), projectRoot=pwd; end
