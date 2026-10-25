@@ -5,8 +5,8 @@ close all;
 p = three_mass_params();
 s = benchmark_settings(p);
 
-Tdata = 500;
-amplitude = 3.0;
+Tdata = 120;
+amplitude = 8.0;
 
 rng(1);
 
