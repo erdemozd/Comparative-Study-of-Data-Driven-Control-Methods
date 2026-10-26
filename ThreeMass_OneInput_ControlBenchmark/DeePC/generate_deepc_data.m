@@ -5,7 +5,7 @@ close all;
 p = three_mass_params();
 s = benchmark_settings(p);
 
-Tdata = 120;
+Tdata = 600;
 amplitude = 8.0;
 
 rng(1);
